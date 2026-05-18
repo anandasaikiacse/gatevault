@@ -146,7 +146,7 @@ export default function AdminSignupPage() {
             </div>
 
             <button type="button" onClick={handleSignup} disabled={loading} className={`mt-5 w-full rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 py-3 font-semibold text-white shadow-md transition ${loading ? "cursor-not-allowed opacity-70" : "hover:scale-[1.02] active:scale-[0.98]"}`}>
-              {loading ? "Creating..." : "CREATE ADMIN"}
+              {loading ? "Creating..." : "Create Admin"}
             </button>
 
             <p className="mt-3 text-center text-xs text-gray-500">

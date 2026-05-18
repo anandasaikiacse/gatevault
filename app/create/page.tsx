@@ -1,0 +1,357 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+export default function CreatePage() {
+  const router = useRouter();
+  const today = formatDateInput(new Date());
+
+  const [form, setForm] = useState({
+    passType: "Short",
+    phone: "",
+    place: "",
+    purpose: "",
+    leaveStartDate: today,
+    leaveEndDate: today,
+    timeOut: "",
+    timeIn: "",
+    person: "",
+    personPhone: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setForm({
+      ...form,
+      [name]: name === "phone" || name === "personPhone" ? value.replace(/\D/g, "").slice(0, 10) : value,
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // 🔥 VALIDATION
+    if (!form.phone || form.phone.length < 10) {
+      alert("Enter valid phone number");
+      return;
+    }
+
+    if (!form.place || !form.purpose) {
+      alert("Fill all required fields");
+      return;
+    }
+
+    if (!form.timeOut || !form.timeIn) {
+      alert("Select time");
+      return;
+    }
+
+    if (form.passType === "LongLeave" && (!form.leaveStartDate || !form.leaveEndDate)) {
+      alert("Select leave start and end dates");
+      return;
+    }
+
+    const leaveStartDate = form.passType === "Short" ? today : form.leaveStartDate;
+    const initialLeaveEndDate = form.passType === "Short" ? today : form.leaveEndDate;
+    const start = new Date(`${leaveStartDate}T00:00:00`);
+    const end = new Date(`${initialLeaveEndDate}T00:00:00`);
+    const todayStart = new Date(`${today}T00:00:00`);
+    const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+
+    if (form.passType === "LongLeave") {
+      if (start < todayStart) {
+        alert("Leave start date cannot be in the past");
+        return;
+      }
+
+      if (days < 2 || days > 15) {
+        alert("Long leave must be between 2 and 15 days");
+        return;
+      }
+    }
+
+    const leaveDateTime = new Date(`${leaveStartDate}T${form.timeOut}:00`);
+    let returnDateTime = new Date(`${initialLeaveEndDate}T${form.timeIn}:00`);
+
+    if (form.passType === "Short" && returnDateTime <= leaveDateTime) {
+      returnDateTime = addDays(returnDateTime, 1);
+    }
+
+    if (Number.isNaN(leaveDateTime.getTime()) || Number.isNaN(returnDateTime.getTime())) {
+      alert("Select valid date and time");
+      return;
+    }
+
+    if (form.passType === "LongLeave" && returnDateTime <= leaveDateTime) {
+      alert("Time In must be after Time Out");
+      return;
+    }
+
+    if (form.passType === "LongLeave" && returnDateTime <= new Date()) {
+      alert("Return time must be in the future");
+      return;
+    }
+
+    const requestForm = {
+      ...form,
+      leaveStartDate,
+      leaveEndDate: formatDateInput(returnDateTime),
+    };
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/passes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestForm),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        const passId = data.pass?._id;
+
+        if (passId) {
+          router.push(`/pass?id=${passId}`);
+        } else {
+          router.push("/dashboard");
+        }
+      } else {
+        alert(data.message || "Failed to create pass");
+      }
+    } catch {
+      alert("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mobile-shell-outer">
+
+      {/* FRAME */}
+      <div className="mobile-shell">
+
+        {/* ORANGE BACKGROUND */}
+        <div className="absolute bottom-[-100px] right-[-50px] w-[500px] h-[350px] 
+        bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600 rounded-tl-[200px]" />
+
+        {/* FORM CARD */}
+        <form
+          onSubmit={handleSubmit}
+          className="glass-card absolute left-1/2 top-8 max-h-[calc(100%-64px)] w-[min(330px,calc(100%-32px))]
+          sm:w-[min(620px,calc(100%-64px))]
+          -translate-x-1/2 overflow-y-auto rounded-3xl p-5 text-gray-800 sm:p-6"
+        >
+
+          {/* TOP BLOB */}
+          <div className="absolute top-0 right-0 w-16 h-14 bg-orange-400 rounded-bl-[40px]" />
+
+          {/* TITLE */}
+          <h2 className="text-lg font-semibold text-gray-800">
+            Create Pass
+          </h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Fill details to generate gate pass
+          </p>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1 sm:max-w-sm">
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, passType: "Short" })}
+              className={`rounded-lg py-2 text-xs font-medium transition ${form.passType === "Short" ? "bg-white text-orange-600 shadow-sm" : "text-gray-500"}`}
+            >
+              Short Pass
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, passType: "LongLeave" })}
+              className={`rounded-lg py-2 text-xs font-medium transition ${form.passType === "LongLeave" ? "bg-white text-orange-600 shadow-sm" : "text-gray-500"}`}
+            >
+              Long Leave
+            </button>
+          </div>
+
+          {/* PHONE */}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+            <p className="text-xs text-gray-400">Phone No.</p>
+            <input
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="Enter phone number"
+              className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+              text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 
+              focus:border-orange-300 transition"
+            />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Place</p>
+              <input
+                name="place"
+                value={form.place}
+                onChange={handleChange}
+                type="text"
+                placeholder="Enter place to visit"
+                className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+                text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 
+                focus:border-orange-300 transition"
+              />
+            </div>
+          </div>
+
+          {/* PURPOSE */}
+          <div className="mt-3">
+            <p className="text-xs text-gray-400">Purpose</p>
+            <input
+              name="purpose"
+              value={form.purpose}
+              onChange={handleChange}
+              type="text"
+              maxLength={50}
+              placeholder="Enter purpose (max 50 chars)"
+              className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+              text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 
+              focus:border-orange-300 transition"
+            />
+          </div>
+
+          {form.passType === "LongLeave" && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400">START DATE</p>
+                <input
+                  type="date"
+                  name="leaveStartDate"
+                  value={form.leaveStartDate}
+                  onChange={handleChange}
+                  min={today}
+                  className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400">END DATE</p>
+                <input
+                  type="date"
+                  name="leaveEndDate"
+                  value={form.leaveEndDate}
+                  onChange={handleChange}
+                  min={form.leaveStartDate || today}
+                  className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TIME PICKER */}
+          <div className="grid grid-cols-2 gap-3 mt-3 sm:grid-cols-4">
+
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400">{form.passType === "LongLeave" ? "LEAVE TIME" : "TIME OUT"}</p>
+              <input
+                type="time"
+                name="timeOut"
+                value={form.timeOut}
+                onChange={handleChange}
+                className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+                text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400">{form.passType === "LongLeave" ? "RETURN TIME" : "TIME IN"}</p>
+              <input
+                type="time"
+                name="timeIn"
+                value={form.timeIn}
+                onChange={handleChange}
+                className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+                text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+            </div>
+
+          </div>
+
+          {/* ACCOMPANYING */}
+          <div className="mt-3">
+            <p className="text-xs text-gray-400">Accompanying Person</p>
+            <input
+              name="person"
+              value={form.person}
+              onChange={handleChange}
+              type="text"
+              placeholder="Enter name"
+              className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+              focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+
+          {/* PERSON PHONE */}
+          <div className="mt-3">
+            <p className="text-xs text-gray-400">Person's Phone No.</p>
+            <input
+              name="personPhone"
+              value={form.personPhone}
+              onChange={handleChange}
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="Enter person's phone number"
+              className="w-full mt-1 p-3 rounded-xl bg-white border border-gray-200 
+              focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+
+          {/* BUTTONS */}
+          <div className="mt-6 flex gap-3 sm:justify-end">
+
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="w-1/2 bg-gray-100 py-3 rounded-xl text-sm text-gray-700 sm:w-36
+              hover:scale-105 active:scale-95 transition"
+            >
+              Back
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-1/2 bg-gradient-to-r from-orange-500 to-orange-600 sm:w-36
+              text-white py-3 rounded-xl text-sm font-medium shadow-md 
+              hover:scale-105 active:scale-95 transition disabled:opacity-70"
+            >
+              {loading ? "Creating..." : "Submit"}
+            </button>
+
+          </div>
+
+        </form>
+      </div>
+    </div>
+  );
+}
